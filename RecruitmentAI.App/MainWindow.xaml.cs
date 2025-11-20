@@ -2,8 +2,11 @@
 using RecruitmentAI.App.Models;
 using System;
 using System.Collections.Generic;
-using System.Windows;
 using System.Linq;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+
 
 namespace RecruitmentAI.App
 {
@@ -39,19 +42,16 @@ namespace RecruitmentAI.App
             try
             {
                 // Validate required fields
-                if (string.IsNullOrWhiteSpace(txtFirstName.Text))
+                if (string.IsNullOrWhiteSpace(txtFullName.Text))
                 {
-                    MessageBox.Show("First name is required.", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBox.Show("Full name is required.", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
 
                 // Create new candidate
                 var candidate = new Candidate
                 {
-                    FirstName = txtFirstName.Text,
-                    MiddleName = txtMiddleName.Text,
-                    FatherName = txtFatherName.Text,
-                    FamilyName = txtFamilyName.Text,
+                    FullName = txtFullName.Text, // Single name field
                     Email = txtEmail.Text,
                     PhoneNumber = txtPhone.Text,
                     Age = int.TryParse(txtAge.Text, out int age) ? age : 0,
@@ -82,10 +82,7 @@ namespace RecruitmentAI.App
 
         private void ClearForm()
         {
-            txtFirstName.Text = "";
-            txtMiddleName.Text = "";
-            txtFatherName.Text = "";
-            txtFamilyName.Text = "";
+            txtFullName.Text = "";
             txtEmail.Text = "";
             txtPhone.Text = "";
             txtAge.Text = "";
@@ -96,6 +93,89 @@ namespace RecruitmentAI.App
             txtUnitManager.Text = "";
             _selectedVoiceNotePath = "";
             txtVoiceNotePath.Text = "";
+        }
+
+        // Add this field to the class
+        private EnglishAssessmentService _assessmentService = new EnglishAssessmentService();
+
+        // Add these methods
+        private void AssessCandidate_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var button = (Button)sender;
+                var candidateId = (int)button.Tag;
+
+                // Find the candidate
+                var candidates = _databaseService.GetAllCandidates();
+                var candidate = candidates.FirstOrDefault(c => c.Id == candidateId);
+
+                if (candidate != null && !string.IsNullOrEmpty(candidate.VoiceNotePath))
+                {
+                    // Show processing message
+                    button.Content = "Processing...";
+                    button.IsEnabled = false;
+
+                    // Process in background to avoid UI freezing
+                    Task.Run(() =>
+                    {
+                        // Assess English level
+                        var result = _assessmentService.AssessEnglishLevel(candidate.VoiceNotePath);
+
+                        // Update UI on main thread
+                        Dispatcher.Invoke(() =>
+                        {
+                            // Update candidate in database
+                            var jobsText = string.Join(", ", result.MatchedJobs);
+                            _databaseService.UpdateCandidateAssessment(candidateId, result.EnglishLevel, jobsText);
+
+                            // Show results
+                            MessageBox.Show($"Assessment Complete!\n\nEnglish Level: {result.EnglishLevel}\n" +
+                                          $"Confidence: {result.ConfidenceScore:P0}\n" +
+                                          $"Matched Jobs: {jobsText}\n\n" +
+                                          $"Feedback: {result.Feedback}", 
+                                          "AI Assessment Result", 
+                                          MessageBoxButton.OK, 
+                                          MessageBoxImage.Information);
+
+                            // Reload candidates to show updated data
+                            LoadCandidates();
+                        });
+                    });
+                }
+                else
+                {
+                    MessageBox.Show("Candidate or voice note not found.", "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Assessment failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void ViewJobs_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var candidateId = (int)button.Tag;
+
+            var candidates = _databaseService.GetAllCandidates();
+            var candidate = candidates.FirstOrDefault(c => c.Id == candidateId);
+
+            if (candidate != null && !string.IsNullOrEmpty(candidate.MatchedOffers))
+            {
+                MessageBox.Show($"Matched Jobs for {candidate.FullName}:\n\n{candidate.MatchedOffers}", 
+                               "Job Matches", 
+                               MessageBoxButton.OK, 
+                               MessageBoxImage.Information);
+            }
+            else
+            {
+                MessageBox.Show("No job matches available. Please assess English level first.", 
+                               "No Data", 
+                               MessageBoxButton.OK, 
+                               MessageBoxImage.Information);
+            }
         }
 
         private void LoadCandidates()

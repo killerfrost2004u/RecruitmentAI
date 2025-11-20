@@ -59,3 +59,6 @@ D:\Projects\RecruitmentAI\RecruitmentAI.App\obj\Debug\net8.0-windows\refint\Recr
 D:\Projects\RecruitmentAI\RecruitmentAI.App\obj\Debug\net8.0-windows\RecruitmentAI.App.pdb
 D:\Projects\RecruitmentAI\RecruitmentAI.App\obj\Debug\net8.0-windows\RecruitmentAI.App.genruntimeconfig.cache
 D:\Projects\RecruitmentAI\RecruitmentAI.App\obj\Debug\net8.0-windows\ref\RecruitmentAI.App.dll
+D:\Projects\RecruitmentAI\RecruitmentAI.App\obj\Debug\net8.0-windows\RecruitmentAI.App.sourcelink.json
+D:\Projects\RecruitmentAI\RecruitmentAI.App\bin\Debug\net8.0-windows\System.Speech.dll
+D:\Projects\RecruitmentAI\RecruitmentAI.App\bin\Debug\net8.0-windows\runtimes\win\lib\net8.0\System.Speech.dll

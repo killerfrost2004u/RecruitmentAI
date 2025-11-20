@@ -16,6 +16,7 @@ namespace RecruitmentAI.App.Models
             _databasePath = Path.Combine(Directory.GetCurrentDirectory(), "recruitment.db");
             _connectionString = $"Data Source={_databasePath}";
             InitializeDatabase();
+            UpdateDatabaseSchema();
         }
 
         private void InitializeDatabase()
@@ -49,6 +50,68 @@ namespace RecruitmentAI.App.Models
             command.ExecuteNonQuery();
         }
 
+        private void UpdateDatabaseSchema()
+        {
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+
+            // Check if we need to update the schema
+            var checkCommand = connection.CreateCommand();
+            checkCommand.CommandText = "PRAGMA table_info(Candidates)";
+
+            var columns = new List<string>();
+            using (var reader = checkCommand.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    columns.Add(reader.GetString(1)); // Column name is at index 1
+                }
+            }
+
+            // If old columns exist, we need to migrate
+            if (columns.Contains("FirstName"))
+            {
+                // Create temporary table with new schema
+                var migrateCommand = connection.CreateCommand();
+                migrateCommand.CommandText = @"
+                    CREATE TABLE Candidates_New (
+                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        FullName TEXT NOT NULL,
+                        Email TEXT,
+                        PhoneNumber TEXT,
+                        Age INTEGER,
+                        EducationStatus TEXT,
+                        MilitaryStatus TEXT,
+                        RecruiterName TEXT,
+                        LeaderName TEXT,
+                        UnitManagerName TEXT,
+                        VoiceNotePath TEXT,
+                        EnglishLevel TEXT,
+                        MatchedOffers TEXT,
+                        CreatedDate DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        Status TEXT DEFAULT 'New'
+                    );
+
+                    INSERT INTO Candidates_New (
+                        Id, FullName, Email, PhoneNumber, Age, EducationStatus, MilitaryStatus,
+                        RecruiterName, LeaderName, UnitManagerName, VoiceNotePath,
+                        EnglishLevel, MatchedOffers, CreatedDate, Status
+                    )
+                    SELECT 
+                        Id, 
+                        FirstName || ' ' || COALESCE(MiddleName, '') || ' ' || COALESCE(FatherName, '') || ' ' || COALESCE(FamilyName, ''),
+                        Email, PhoneNumber, Age, EducationStatus, MilitaryStatus,
+                        RecruiterName, LeaderName, UnitManagerName, VoiceNotePath,
+                        EnglishLevel, MatchedOffers, CreatedDate, Status
+                    FROM Candidates;
+
+                    DROP TABLE Candidates;
+                    ALTER TABLE Candidates_New RENAME TO Candidates;
+                ";
+                migrateCommand.ExecuteNonQuery();
+            }
+        }
+
         public void AddCandidate(Candidate candidate)
         {
             using var connection = new SqliteConnection(_connectionString);
@@ -57,12 +120,12 @@ namespace RecruitmentAI.App.Models
             var command = connection.CreateCommand();
             command.CommandText = @"
                 INSERT INTO Candidates (
-                    FirstName, MiddleName, FatherName, FamilyName, 
+                    FullName, 
                     Email, PhoneNumber, Age, EducationStatus, MilitaryStatus,
                     RecruiterName, LeaderName, UnitManagerName, VoiceNotePath,
                     EnglishLevel, MatchedOffers, Status
                 ) VALUES (
-                    $firstName, $middleName, $fatherName, $familyName,
+                    $fullName,
                     $email, $phoneNumber, $age, $educationStatus, $militaryStatus,
                     $recruiterName, $leaderName, $unitManagerName, $voiceNotePath,
                     $englishLevel, $matchedOffers, $status
@@ -70,10 +133,7 @@ namespace RecruitmentAI.App.Models
             ";
 
             // Add parameters to prevent SQL injection
-            command.Parameters.AddWithValue("$firstName", candidate.FirstName);
-            command.Parameters.AddWithValue("$middleName", candidate.MiddleName ?? "");
-            command.Parameters.AddWithValue("$fatherName", candidate.FatherName ?? "");
-            command.Parameters.AddWithValue("$familyName", candidate.FamilyName ?? "");
+            command.Parameters.AddWithValue("$fullName", candidate.FullName ?? "");
             command.Parameters.AddWithValue("$email", candidate.Email ?? "");
             command.Parameters.AddWithValue("$phoneNumber", candidate.PhoneNumber ?? "");
             command.Parameters.AddWithValue("$age", candidate.Age);
@@ -86,6 +146,28 @@ namespace RecruitmentAI.App.Models
             command.Parameters.AddWithValue("$englishLevel", candidate.EnglishLevel ?? "");
             command.Parameters.AddWithValue("$matchedOffers", candidate.MatchedOffers ?? "");
             command.Parameters.AddWithValue("$status", candidate.Status ?? "New");
+
+            command.ExecuteNonQuery();
+        }
+
+        public void UpdateCandidateAssessment(int candidateId, string englishLevel, string matchedOffers, string status = "Assessed")
+        {
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+                UPDATE Candidates 
+                SET EnglishLevel = $englishLevel, 
+                    MatchedOffers = $matchedOffers,
+                    Status = $status
+                WHERE Id = $id
+            ";
+
+            command.Parameters.AddWithValue("$englishLevel", englishLevel);
+            command.Parameters.AddWithValue("$matchedOffers", matchedOffers);
+            command.Parameters.AddWithValue("$status", status);
+            command.Parameters.AddWithValue("$id", candidateId);
 
             command.ExecuteNonQuery();
         }
@@ -106,23 +188,20 @@ namespace RecruitmentAI.App.Models
                 candidates.Add(new Candidate
                 {
                     Id = reader.GetInt32(0),
-                    FirstName = reader.GetString(1),
-                    MiddleName = reader.IsDBNull(2) ? "" : reader.GetString(2),
-                    FatherName = reader.IsDBNull(3) ? "" : reader.GetString(3),
-                    FamilyName = reader.IsDBNull(4) ? "" : reader.GetString(4),
-                    Email = reader.IsDBNull(5) ? "" : reader.GetString(5),
-                    PhoneNumber = reader.IsDBNull(6) ? "" : reader.GetString(6),
-                    Age = reader.GetInt32(7),
-                    EducationStatus = reader.IsDBNull(8) ? "" : reader.GetString(8),
-                    MilitaryStatus = reader.IsDBNull(9) ? "" : reader.GetString(9),
-                    RecruiterName = reader.IsDBNull(10) ? "" : reader.GetString(10),
-                    LeaderName = reader.IsDBNull(11) ? "" : reader.GetString(11),
-                    UnitManagerName = reader.IsDBNull(12) ? "" : reader.GetString(12),
-                    VoiceNotePath = reader.IsDBNull(13) ? "" : reader.GetString(13),
-                    EnglishLevel = reader.IsDBNull(14) ? "" : reader.GetString(14),
-                    MatchedOffers = reader.IsDBNull(15) ? "" : reader.GetString(15),
-                    CreatedDate = reader.GetDateTime(16),
-                    Status = reader.IsDBNull(17) ? "New" : reader.GetString(17)
+                    FullName = reader.IsDBNull(1) ? "" : reader.GetString(1), // Now reading from column 1
+                    Email = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                    PhoneNumber = reader.IsDBNull(3) ? "" : reader.GetString(3),
+                    Age = reader.GetInt32(4),
+                    EducationStatus = reader.IsDBNull(5) ? "" : reader.GetString(5),
+                    MilitaryStatus = reader.IsDBNull(6) ? "" : reader.GetString(6),
+                    RecruiterName = reader.IsDBNull(7) ? "" : reader.GetString(7),
+                    LeaderName = reader.IsDBNull(8) ? "" : reader.GetString(8),
+                    UnitManagerName = reader.IsDBNull(9) ? "" : reader.GetString(9),
+                    VoiceNotePath = reader.IsDBNull(10) ? "" : reader.GetString(10),
+                    EnglishLevel = reader.IsDBNull(11) ? "" : reader.GetString(11),
+                    MatchedOffers = reader.IsDBNull(12) ? "" : reader.GetString(12),
+                    CreatedDate = reader.GetDateTime(13),
+                    Status = reader.IsDBNull(14) ? "New" : reader.GetString(14)
                 });
             }
 

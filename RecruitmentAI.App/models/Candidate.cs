@@ -6,11 +6,8 @@ namespace RecruitmentAI.App.Models
     {
         public int Id { get; set; }
         
-        // Quadruple Name
-        public string FirstName { get; set; }
-        public string MiddleName { get; set; }
-        public string FatherName { get; set; }
-        public string FamilyName { get; set; }
+        // Single Name Field instead of quadruple
+        public string FullName { get; set; }
         
         // Contact Information
         public string Email { get; set; }
@@ -32,7 +29,5 @@ namespace RecruitmentAI.App.Models
         public string MatchedOffers { get; set; }
         public DateTime CreatedDate { get; set; }
         public string Status { get; set; } // New, Processed, Interview Scheduled
-        
-        public string FullName => $"{FirstName} {MiddleName} {FatherName} {FamilyName}";
     }
 }

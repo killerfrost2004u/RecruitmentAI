@@ -21,20 +21,12 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="10" Width="400">
                         
-                        <!-- Quadruple Name -->
-                        <GroupBox Header="Candidate Name (Quadruple)" Margin="0,0,0,10">
+                        <!-- Candidate Name -->
+                        <GroupBox Header="Candidate Information" Margin="0,0,0,10">
                             <StackPanel>
-                                <TextBlock Text="First Name" FontWeight="SemiBold" Margin="0,5,0,2"/>
-                                <TextBox Name="txtFirstName" Margin="0,0,0,5" Height="25"/>
-                                
-                                <TextBlock Text="Middle Name" FontWeight="SemiBold" Margin="0,5,0,2"/>
-                                <TextBox Name="txtMiddleName" Margin="0,0,0,5" Height="25"/>
-                                
-                                <TextBlock Text="Father Name" FontWeight="SemiBold" Margin="0,5,0,2"/>
-                                <TextBox Name="txtFatherName" Margin="0,0,0,5" Height="25"/>
-                                
-                                <TextBlock Text="Family Name" FontWeight="SemiBold" Margin="0,5,0,2"/>
-                                <TextBox Name="txtFamilyName" Margin="0,0,0,5" Height="25"/>
+                                <TextBlock Text="Full Name" FontWeight="SemiBold" Margin="0,5,0,2"/>
+                                <TextBox Name="txtFullName" Margin="0,0,0,5" Height="25" 
+                                         ToolTip="Enter candidate's full name"/>
                             </StackPanel>
                         </GroupBox>
 
@@ -116,6 +108,31 @@
                         <DataGridTextColumn Header="English Level" Binding="{Binding EnglishLevel}" Width="80"/>
                         <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100"/>
                         <DataGridTextColumn Header="Date" Binding="{Binding CreatedDate, StringFormat=dd/MM/yyyy}" Width="80"/>
+
+                        <DataGridTemplateColumn Header="Actions" Width="120">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button Content="Assess" 
+                                                Click="AssessCandidate_Click" 
+                                                Tag="{Binding Id}"
+                                                Background="#28a745" 
+                                                Foreground="White" 
+                                                Margin="2" 
+                                                Padding="5,2"
+                                                ToolTip="Assess English level"/>
+                                        <Button Content="Jobs" 
+                                                Click="ViewJobs_Click" 
+                                                Tag="{Binding Id}"
+                                                Background="#17a2b8" 
+                                                Foreground="White" 
+                                                Margin="2" 
+                                                Padding="5,2"
+                                                ToolTip="View matched jobs"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
                     </DataGrid.Columns>
                 </DataGrid>
             </TabItem>
