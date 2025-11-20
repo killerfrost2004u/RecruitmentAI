@@ -4,18 +4,71 @@ using System.Speech.Recognition;
 using System.Globalization;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace RecruitmentAI.App.Models
 {
+    public class ManualAssessment
+    {
+        public int CandidateId { get; set; }
+        public string ExpertEnglishLevel { get; set; } = "";
+        public string ExpertFeedback { get; set; } = "";
+        public DateTime AssessmentDate { get; set; }
+    }
+    public class MLAssessmentResult
+    {
+        public string Level { get; set; } = "B1";
+        public double Confidence { get; set; } = 0.85;
+        public Dictionary<string, double> DetailedScores { get; set; } = new Dictionary<string, double>();
+    }
+
     public class EnglishAssessmentService
     {
+        private List<ManualAssessment> _manualAssessments = new List<ManualAssessment>();
+
+        public void SaveManualAssessment(int candidateId, string englishLevel, string feedback)
+        {
+            _manualAssessments.Add(new ManualAssessment
+            {
+                CandidateId = candidateId,
+                ExpertEnglishLevel = englishLevel,
+                ExpertFeedback = feedback,
+                AssessmentDate = DateTime.Now
+            });
+
+            SaveTrainingDataToFile();
+        }
+
+        private void SaveTrainingDataToFile()
+        {
+            try
+            {
+                var trainingData = _manualAssessments.Select(ma => new
+                {
+                    ma.CandidateId,
+                    ma.ExpertEnglishLevel,
+                    ma.ExpertFeedback,
+                    ma.AssessmentDate
+                }).ToList();
+                
+                var json = System.Text.Json.JsonSerializer.Serialize(trainingData, 
+                    new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                
+                File.WriteAllText("training_data.json", json);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error saving training data: {ex.Message}");
+            }
+        }
+        
         public class AssessmentResult
         {
-            public string EnglishLevel { get; set; } // A1, A2, B1, B2, C1, C2
+            public string EnglishLevel { get; set; } = "Pending";
             public double ConfidenceScore { get; set; }
-            public string Feedback { get; set; }
-            public List<string> MatchedJobs { get; set; }
-            public Dictionary<string, double> FeatureScores { get; set; }
+            public string Feedback { get; set; } = "Assessment in progress";
+            public List<string> MatchedJobs { get; set; } = new List<string>();
+            public Dictionary<string, double> FeatureScores { get; set; } = new Dictionary<string, double>();
         }
 
         // Job requirements by English level
@@ -29,6 +82,14 @@ namespace RecruitmentAI.App.Models
             ["C2"] = new List<string> { "Executive", "Director", "Consultant", "International Relations" }
         };
 
+        private List<string> MatchJobsToLevel(string englishLevel)
+        {
+            return _jobRequirements.ContainsKey(englishLevel) 
+                ? _jobRequirements[englishLevel] 
+                : new List<string> { "General Positions" };
+        }
+
+        // ADD THIS METHOD TO YOUR EnglishAssessmentService CLASS
         public AssessmentResult AssessEnglishLevel(string audioFilePath, string transcription = "")
         {
             // If no transcription provided, try to transcribe
@@ -39,7 +100,35 @@ namespace RecruitmentAI.App.Models
 
             var features = AnalyzeSpeechFeatures(transcription, audioFilePath);
             var level = CalculateCEFRLevel(features);
-            var jobs = MatchJobsToLevel(level);
+            var jobs = MatchJobsToLevel(level); // Use the SIMPLE version
+
+            return new AssessmentResult
+            {
+                EnglishLevel = level,
+                ConfidenceScore = features.OverallScore,
+                Feedback = GenerateFeedback(level, features),
+                MatchedJobs = jobs,
+                FeatureScores = new Dictionary<string, double>
+                {
+                    ["Vocabulary"] = features.VocabularyScore,
+                    ["Grammar"] = features.GrammarScore,
+                    ["Fluency"] = features.FluencyScore,
+                    ["Content"] = features.ContentScore
+                }
+            };
+        }
+
+        public AssessmentResult AssessEnglishLevelWithJobMatching(string audioFilePath, Candidate candidate, List<JobOffer> availableJobs, string transcription = "")
+        {
+            // If no transcription provided, try to transcribe
+            if (string.IsNullOrEmpty(transcription))
+            {
+                transcription = TranscribeAudio(audioFilePath);
+            }
+
+            var features = AnalyzeSpeechFeatures(transcription, audioFilePath);
+            var level = CalculateCEFRLevel(features);
+            var jobs = MatchJobsToLevel(level, candidate, availableJobs);
 
             return new AssessmentResult
             {
@@ -198,6 +287,9 @@ namespace RecruitmentAI.App.Models
         {
             var overallScore = features.OverallScore;
 
+            if (double.IsNaN(overallScore) || double.IsInfinity(overallScore))
+                return "A1";
+
             return overallScore switch
             {
                 < 0.2 => "A1",
@@ -209,11 +301,67 @@ namespace RecruitmentAI.App.Models
             };
         }
 
-        private List<string> MatchJobsToLevel(string englishLevel)
+        private List<string> MatchJobsToLevel(string englishLevel, Candidate candidate, List<JobOffer> availableJobs)
         {
-            return _jobRequirements.ContainsKey(englishLevel) 
-                ? _jobRequirements[englishLevel] 
-                : new List<string> { "General Positions" };
+            var matchedJobs = new List<string>();
+            var candidateAge = candidate.Age;
+
+            foreach (var job in availableJobs)
+            {
+                if (IsCandidateQualified(candidate, job, englishLevel))
+                {
+                    // Calculate match score
+                    var matchScore = CalculateMatchScore(candidate, job, englishLevel);
+                    matchedJobs.Add($"{job.Title} at {job.Company} (${job.Salary}) - Score: {matchScore:P0}");
+                }
+            }
+
+            // Return top 3 matches sorted by score
+            return matchedJobs.OrderByDescending(j => j).Take(3).ToList();
+        }
+
+        private bool IsCandidateQualified(Candidate candidate, JobOffer job, string englishLevel)
+        {
+            // English level qualification (C2 > C1 > B2 > B1 > A2 > A1)
+            var englishLevels = new Dictionary<string, int> { ["A1"] = 1, ["A2"] = 2, ["B1"] = 3, ["B2"] = 4, ["C1"] = 5, ["C2"] = 6 };
+
+            if (englishLevels[englishLevel] < englishLevels[job.RequiredEnglishLevel])
+                return false;
+
+            // Age qualification
+            if (candidate.Age < job.MinAge || candidate.Age > job.MaxAge)
+                return false;
+
+            // Education qualification
+            if (job.RequiredEducation != "Any" && candidate.EducationStatus != job.RequiredEducation)
+                return false;
+
+            // Military qualification
+            if (job.MilitaryRequirement != "Any" && candidate.MilitaryStatus != job.MilitaryRequirement)
+                return false;
+
+            return true;
+        }
+
+        private double CalculateMatchScore(Candidate candidate, JobOffer job, string englishLevel)
+        {
+            double score = 0.0;
+            var englishLevels = new Dictionary<string, int> { ["A1"] = 1, ["A2"] = 2, ["B1"] = 3, ["B2"] = 4, ["C1"] = 5, ["C2"] = 6 };
+
+            // English level match (closer to required level = higher score)
+            var englishDiff = englishLevels[englishLevel] - englishLevels[job.RequiredEnglishLevel];
+            score += Math.Max(0.5, 1.0 - (englishDiff * 0.1));
+
+            // Age match (closer to middle of range = higher score)
+            var ageRangeMiddle = (job.MinAge + job.MaxAge) / 2.0;
+            var ageDiff = Math.Abs(candidate.Age - ageRangeMiddle);
+            var ageRange = job.MaxAge - job.MinAge;
+            score += Math.Max(0.3, 1.0 - (ageDiff / ageRange));
+
+            // Priority bonus
+            score += (job.Priority * 0.1);
+
+            return Math.Min(score, 1.0);
         }
 
         private string GenerateFeedback(string level, SpeechFeatures features)
@@ -227,6 +375,78 @@ namespace RecruitmentAI.App.Models
                 "C1" => "Advanced English. Excellent communication skills suitable for professional environments.",
                 "C2" => "Proficient English. Near-native level suitable for executive roles.",
                 _ => "Assessment completed."
+            };
+        }
+
+         // ↓ REPLACE THIS ENTIRE METHOD ↓
+        public async Task<AssessmentResult> AssessWithMLModel(string audioFilePath)
+        {
+            var mlClient = new MLApiClient();
+
+            // Check if ML service is available
+            var isAvailable = await mlClient.IsMLServiceAvailable();
+
+            if (!isAvailable)
+            {
+                // Fallback to rule-based assessment
+                return AssessEnglishLevel(audioFilePath);
+            }
+
+            try
+            {
+                // Call ML API
+                var mlResult = await mlClient.AssessEnglishWithML(audioFilePath);
+
+                if (mlResult.Success)
+                {
+                    return new AssessmentResult
+                    {
+                        EnglishLevel = mlResult.EnglishLevel,
+                        ConfidenceScore = mlResult.Confidence,
+                        Feedback = GenerateMLFeedback(mlResult.EnglishLevel, mlResult.Confidence),
+                        MatchedJobs = MatchJobsToLevel(mlResult.EnglishLevel),
+                        FeatureScores = new Dictionary<string, double>()
+                    };
+                }
+                else
+                {
+                    // ML API failed, fallback to rule-based
+                    return AssessEnglishLevel(audioFilePath);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Fallback to rule-based assessment
+                Console.WriteLine($"ML assessment failed: {ex.Message}");
+                return AssessEnglishLevel(audioFilePath);
+            }
+        }
+        // ↓ REPLACE THIS METHOD ↓
+        private string GenerateMLFeedback(string level, double confidence)
+        {
+            var confidenceText = confidence switch
+            {
+                > 0.9 => "very high confidence",
+                > 0.7 => "high confidence", 
+                > 0.5 => "moderate confidence",
+                _ => "low confidence"
+            };
+
+            return $"ML Assessment ({confidenceText}): {GetDetailedFeedback(level)}";
+        }
+
+        // ↓ ADD THIS NEW METHOD AFTER GenerateMLFeedback ↓
+        private string GetDetailedFeedback(string level)
+        {
+            return level switch
+            {
+                "A1" => "Basic user. Can understand and use familiar expressions. Focus on basic vocabulary and simple sentences.",
+                "A2" => "Elementary user. Can communicate in routine tasks. Practice everyday expressions and basic grammar.",
+                "B1" => "Intermediate user. Can handle most travel situations. Work on fluency and connecting phrases.",
+                "B2" => "Upper-intermediate user. Can interact with native speakers. Focus on complex texts and professional vocabulary.",
+                "C1" => "Advanced user. Can use language flexibly for social and professional purposes.",
+                "C2" => "Proficient user. Can understand virtually everything heard or read. Near-native fluency.",
+                _ => "Assessment completed with advanced AI analysis."
             };
         }
     }

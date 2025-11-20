@@ -17,6 +17,8 @@ namespace RecruitmentAI.App.Models
             _connectionString = $"Data Source={_databasePath}";
             InitializeDatabase();
             UpdateDatabaseSchema();
+            InitializeJobOffersTable(); // ← ADD THIS LINE
+            AddSampleJobOffers(); // ← ADD THIS LINE (optional)
         }
 
         private void InitializeDatabase()
@@ -206,6 +208,150 @@ namespace RecruitmentAI.App.Models
             }
 
             return candidates;
+        }
+        // Add to DatabaseService class
+        public void InitializeJobOffersTable()
+        {
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+                CREATE TABLE IF NOT EXISTS JobOffers (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Title TEXT NOT NULL,
+                    Company TEXT NOT NULL,
+                    RequiredEnglishLevel TEXT NOT NULL,
+                    RequiredEducation TEXT NOT NULL,
+                    MilitaryRequirement TEXT NOT NULL,
+                    MinAge INTEGER DEFAULT 18,
+                    MaxAge INTEGER DEFAULT 60,
+                    Salary REAL DEFAULT 0,
+                    Location TEXT,
+                    Description TEXT,
+                    Priority INTEGER DEFAULT 1,
+                    IsActive BOOLEAN DEFAULT 1
+                );
+            ";
+            command.ExecuteNonQuery();
+        }
+
+        public void AddJobOffer(JobOffer job)
+        {
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+                INSERT INTO JobOffers (
+                    Title, Company, RequiredEnglishLevel, RequiredEducation, MilitaryRequirement,
+                    MinAge, MaxAge, Salary, Location, Description, Priority, IsActive
+                ) VALUES (
+                    $title, $company, $englishLevel, $education, $military,
+                    $minAge, $maxAge, $salary, $location, $description, $priority, $isActive
+                )
+            ";
+
+            command.Parameters.AddWithValue("$title", job.Title);
+            command.Parameters.AddWithValue("$company", job.Company);
+            command.Parameters.AddWithValue("$englishLevel", job.RequiredEnglishLevel);
+            command.Parameters.AddWithValue("$education", job.RequiredEducation);
+            command.Parameters.AddWithValue("$military", job.MilitaryRequirement);
+            command.Parameters.AddWithValue("$minAge", job.MinAge);
+            command.Parameters.AddWithValue("$maxAge", job.MaxAge);
+            command.Parameters.AddWithValue("$salary", job.Salary);
+            command.Parameters.AddWithValue("$location", job.Location);
+            command.Parameters.AddWithValue("$description", job.Description);
+            command.Parameters.AddWithValue("$priority", job.Priority);
+            command.Parameters.AddWithValue("$isActive", job.IsActive);
+
+            command.ExecuteNonQuery();
+        }
+
+        public List<JobOffer> GetAllJobOffers()
+        {
+            var jobs = new List<JobOffer>();
+
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+
+            var command = connection.CreateCommand();
+            command.CommandText = "SELECT * FROM JobOffers WHERE IsActive = 1 ORDER BY Priority DESC, Salary DESC";
+
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                jobs.Add(new JobOffer
+                {
+                    Id = reader.GetInt32(0),
+                    Title = reader.GetString(1),
+                    Company = reader.GetString(2),
+                    RequiredEnglishLevel = reader.GetString(3),
+                    RequiredEducation = reader.GetString(4),
+                    MilitaryRequirement = reader.GetString(5),
+                    MinAge = reader.GetInt32(6),
+                    MaxAge = reader.GetInt32(7),
+                    Salary = reader.GetDouble(8),
+                    Location = reader.IsDBNull(9) ? "" : reader.GetString(9),
+                    Description = reader.IsDBNull(10) ? "" : reader.GetString(10),
+                    Priority = reader.GetInt32(11),
+                    IsActive = reader.GetBoolean(12)
+                });
+            }
+
+            return jobs;
+        }
+        private void AddSampleJobOffers()
+        {
+            var existingJobs = GetAllJobOffers();
+            if (existingJobs.Count == 0)
+            {
+                // Add sample job offers
+                var sampleJobs = new List<JobOffer>
+                {
+                    new JobOffer { 
+                        Title = "Customer Service Representative", 
+                        Company = "Your Company", 
+                        RequiredEnglishLevel = "B1", 
+                        RequiredEducation = "Any",
+                        MilitaryRequirement = "Any",
+                        MinAge = 20, 
+                        MaxAge = 45,
+                        Salary = 8000,
+                        Location = "Cairo",
+                        Priority = 1
+                    },
+                    new JobOffer { 
+                        Title = "Team Leader", 
+                        Company = "Your Company", 
+                        RequiredEnglishLevel = "B2", 
+                        RequiredEducation = "Graduate",
+                        MilitaryRequirement = "Completed",
+                        MinAge = 25, 
+                        MaxAge = 40,
+                        Salary = 12000,
+                        Location = "Alexandria", 
+                        Priority = 2
+                    },
+                    new JobOffer { 
+                        Title = "Sales Manager", 
+                        Company = "Your Company", 
+                        RequiredEnglishLevel = "C1", 
+                        RequiredEducation = "Graduate",
+                        MilitaryRequirement = "Completed", 
+                        MinAge = 28,
+                        MaxAge = 45,
+                        Salary = 18000,
+                        Location = "Cairo",
+                        Priority = 3
+                    }
+                };
+
+                foreach (var job in sampleJobs)
+                {
+                    AddJobOffer(job);
+                }
+            }
         }
     }
 }

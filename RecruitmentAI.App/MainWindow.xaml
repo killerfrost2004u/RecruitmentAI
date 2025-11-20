@@ -133,6 +133,34 @@
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
+                        <DataGridTemplateColumn Header="Expert Assess" Width="100">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="Manual" 
+                                            Click="ManualAssessment_Click" 
+                                            Tag="{Binding Id}"
+                                            Background="#6c757d" 
+                                            Foreground="White" 
+                                            Margin="2" 
+                                            Padding="5,2"
+                                            ToolTip="Expert manual assessment"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTemplateColumn Header="ML Assess" Width="80">
+                            <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Content="ML" 
+                                                Click="MLAssessCandidate_Click" 
+                                                Tag="{Binding Id}"
+                                                Background="#6f42c1" 
+                                                Foreground="White" 
+                                                Margin="2" 
+                                                Padding="5,2"
+                                                ToolTip="Advanced ML assessment"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                     </DataGrid.Columns>
                 </DataGrid>
             </TabItem>

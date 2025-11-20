@@ -13,7 +13,7 @@ namespace RecruitmentAI.App
     public partial class MainWindow : Window
     {
         private DatabaseService _databaseService;
-        private string _selectedVoiceNotePath;
+        private string? _selectedVoiceNotePath;
 
         public MainWindow()
         {
@@ -119,24 +119,32 @@ namespace RecruitmentAI.App
                     // Process in background to avoid UI freezing
                     Task.Run(() =>
                     {
-                        // Assess English level
-                        var result = _assessmentService.AssessEnglishLevel(candidate.VoiceNotePath);
+                        // Get available job offers
+                        var availableJobs = _databaseService.GetAllJobOffers();
+
+                        // Use the NEW method for smart job matching
+                        var result = _assessmentService.AssessEnglishLevelWithJobMatching(candidate.VoiceNotePath, candidate, availableJobs);
 
                         // Update UI on main thread
                         Dispatcher.Invoke(() =>
                         {
                             // Update candidate in database
-                            var jobsText = string.Join(", ", result.MatchedJobs);
+                            var jobsText = string.Join(" | ", result.MatchedJobs);
                             _databaseService.UpdateCandidateAssessment(candidateId, result.EnglishLevel, jobsText);
 
                             // Show results
-                            MessageBox.Show($"Assessment Complete!\n\nEnglish Level: {result.EnglishLevel}\n" +
-                                          $"Confidence: {result.ConfidenceScore:P0}\n" +
-                                          $"Matched Jobs: {jobsText}\n\n" +
-                                          $"Feedback: {result.Feedback}", 
-                                          "AI Assessment Result", 
-                                          MessageBoxButton.OK, 
-                                          MessageBoxImage.Information);
+                            var message = $"Assessment Complete!\n\nEnglish Level: {result.EnglishLevel}\n" +
+                                        $"Confidence: {result.ConfidenceScore:P0}\n\n" +
+                                        $"Top Job Matches:\n";
+
+                            foreach (var job in result.MatchedJobs)
+                            {
+                                message += $"- {job}\n";
+                            }
+
+                            message += $"\nFeedback: {result.Feedback}";
+
+                            MessageBox.Show(message, "AI Assessment Result", MessageBoxButton.OK, MessageBoxImage.Information);
 
                             // Reload candidates to show updated data
                             LoadCandidates();
@@ -151,6 +159,54 @@ namespace RecruitmentAI.App
             catch (Exception ex)
             {
                 MessageBox.Show($"Assessment failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private async void MLAssessCandidate_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var candidateId = (int)button.Tag;
+        
+            var candidates = _databaseService.GetAllCandidates();
+            var candidate = candidates.FirstOrDefault(c => c.Id == candidateId);
+        
+            if (candidate != null && !string.IsNullOrEmpty(candidate.VoiceNotePath))
+            {
+                button.Content = "ML Processing...";
+                button.IsEnabled = false;
+        
+                try
+                {
+                    // Use ML assessment
+                    var result = await _assessmentService.AssessWithMLModel(candidate.VoiceNotePath);
+                    
+                    // Update candidate in database
+                    var jobsText = string.Join(" | ", result.MatchedJobs);
+                    _databaseService.UpdateCandidateAssessment(candidateId, result.EnglishLevel, jobsText, "ML Assessed");
+        
+                    // Show results
+                    var message = $"🤖 ML Assessment Complete!\n\nEnglish Level: {result.EnglishLevel}\n" +
+                                $"Confidence: {result.ConfidenceScore:P0}\n" +
+                                $"Model: Advanced AI\n\n" +
+                                $"Feedback: {result.Feedback}";
+        
+                    MessageBox.Show(message, "Advanced ML Assessment", MessageBoxButton.OK, MessageBoxImage.Information);
+                    
+                    LoadCandidates();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"ML assessment failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+                finally
+                {
+                    button.Content = "ML";
+                    button.IsEnabled = true;
+                }
+            }
+            else
+            {
+                MessageBox.Show("Candidate or voice note not found.", "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
 
@@ -175,6 +231,37 @@ namespace RecruitmentAI.App
                                "No Data", 
                                MessageBoxButton.OK, 
                                MessageBoxImage.Information);
+            }
+        }
+        private void ManualAssessment_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var candidateId = (int)button.Tag;
+
+            var candidates = _databaseService.GetAllCandidates();
+            var candidate = candidates.FirstOrDefault(c => c.Id == candidateId);
+
+            if (candidate != null)
+            {
+                var dialog = new ManualAssessmentDialog(candidate);
+                if (dialog.ShowDialog() == true)
+                {
+                    _assessmentService.SaveManualAssessment(
+                        candidateId, 
+                        dialog.EnglishLevel, 
+                        dialog.Feedback
+                    );
+
+                    _databaseService.UpdateCandidateAssessment(
+                        candidateId, 
+                        dialog.EnglishLevel, 
+                        "Expert Assessed", 
+                        "Expert Reviewed"
+                    );
+
+                    LoadCandidates();
+                    MessageBox.Show("Expert assessment saved for training!", "Success");
+                }
             }
         }
 
