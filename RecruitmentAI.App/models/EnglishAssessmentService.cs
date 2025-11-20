@@ -1,7 +1,5 @@
 using System;
 using System.IO;
-using System.Speech.Recognition;
-using System.Globalization;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -15,6 +13,7 @@ namespace RecruitmentAI.App.Models
         public string ExpertFeedback { get; set; } = "";
         public DateTime AssessmentDate { get; set; }
     }
+
     public class MLAssessmentResult
     {
         public string Level { get; set; } = "B1";
@@ -82,6 +81,7 @@ namespace RecruitmentAI.App.Models
             ["C2"] = new List<string> { "Executive", "Director", "Consultant", "International Relations" }
         };
 
+        // Simple version for backward compatibility
         private List<string> MatchJobsToLevel(string englishLevel)
         {
             return _jobRequirements.ContainsKey(englishLevel) 
@@ -89,7 +89,6 @@ namespace RecruitmentAI.App.Models
                 : new List<string> { "General Positions" };
         }
 
-        // ADD THIS METHOD TO YOUR EnglishAssessmentService CLASS
         public AssessmentResult AssessEnglishLevel(string audioFilePath, string transcription = "")
         {
             // If no transcription provided, try to transcribe
@@ -146,29 +145,67 @@ namespace RecruitmentAI.App.Models
             };
         }
 
+        public async Task<AssessmentResult> AssessWithMLModel(string audioFilePath)
+        {
+            var mlClient = new MLApiClient();
+            
+            // Check if ML service is available
+            var isAvailable = await mlClient.IsMLServiceAvailable();
+            
+            if (!isAvailable)
+            {
+                // Fallback to rule-based assessment
+                return AssessEnglishLevel(audioFilePath);
+            }
+
+            try
+            {
+                // Call ML API
+                var mlResult = await mlClient.AssessEnglishWithML(audioFilePath);
+                
+                if (mlResult.Success)
+                {
+                    return new AssessmentResult
+                    {
+                        EnglishLevel = mlResult.EnglishLevel,
+                        ConfidenceScore = mlResult.Confidence,
+                        Feedback = GenerateMLFeedback(mlResult.EnglishLevel, mlResult.Confidence),
+                        MatchedJobs = MatchJobsToLevel(mlResult.EnglishLevel),
+                        FeatureScores = new Dictionary<string, double>()
+                    };
+                }
+                else
+                {
+                    // ML API failed, fallback to rule-based
+                    return AssessEnglishLevel(audioFilePath);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Fallback to rule-based assessment
+                Console.WriteLine($"ML assessment failed: {ex.Message}");
+                return AssessEnglishLevel(audioFilePath);
+            }
+        }
+
         private string TranscribeAudio(string audioFilePath)
         {
             try
             {
-                // Simple transcription using System.Speech (works for WAV files)
-                if (File.Exists(audioFilePath) && audioFilePath.EndsWith(".wav"))
+                // Simple placeholder - actual transcription will be done by ML API
+                if (File.Exists(audioFilePath))
                 {
-                    using (var speechRecognitionEngine = new SpeechRecognitionEngine(new CultureInfo("en-US")))
-                    {
-                        speechRecognitionEngine.SetInputToWaveFile(audioFilePath);
-                        var result = speechRecognitionEngine.Recognize();
-                        return result?.Text ?? "Could not transcribe audio";
-                    }
+                    var fileInfo = new FileInfo(audioFilePath);
+                    return $"Audio file ready for ML processing: {fileInfo.Name}";
                 }
                 else
                 {
-                    // For other formats, return placeholder
-                    return "Audio transcription requires WAV format or external service";
+                    return "Audio file not found";
                 }
             }
             catch (Exception)
             {
-                return "Automatic transcription not available - using rule-based assessment";
+                return "Audio file processing placeholder";
             }
         }
 
@@ -378,50 +415,6 @@ namespace RecruitmentAI.App.Models
             };
         }
 
-         // ↓ REPLACE THIS ENTIRE METHOD ↓
-        public async Task<AssessmentResult> AssessWithMLModel(string audioFilePath)
-        {
-            var mlClient = new MLApiClient();
-
-            // Check if ML service is available
-            var isAvailable = await mlClient.IsMLServiceAvailable();
-
-            if (!isAvailable)
-            {
-                // Fallback to rule-based assessment
-                return AssessEnglishLevel(audioFilePath);
-            }
-
-            try
-            {
-                // Call ML API
-                var mlResult = await mlClient.AssessEnglishWithML(audioFilePath);
-
-                if (mlResult.Success)
-                {
-                    return new AssessmentResult
-                    {
-                        EnglishLevel = mlResult.EnglishLevel,
-                        ConfidenceScore = mlResult.Confidence,
-                        Feedback = GenerateMLFeedback(mlResult.EnglishLevel, mlResult.Confidence),
-                        MatchedJobs = MatchJobsToLevel(mlResult.EnglishLevel),
-                        FeatureScores = new Dictionary<string, double>()
-                    };
-                }
-                else
-                {
-                    // ML API failed, fallback to rule-based
-                    return AssessEnglishLevel(audioFilePath);
-                }
-            }
-            catch (Exception ex)
-            {
-                // Fallback to rule-based assessment
-                Console.WriteLine($"ML assessment failed: {ex.Message}");
-                return AssessEnglishLevel(audioFilePath);
-            }
-        }
-        // ↓ REPLACE THIS METHOD ↓
         private string GenerateMLFeedback(string level, double confidence)
         {
             var confidenceText = confidence switch
@@ -431,11 +424,10 @@ namespace RecruitmentAI.App.Models
                 > 0.5 => "moderate confidence",
                 _ => "low confidence"
             };
-
+            
             return $"ML Assessment ({confidenceText}): {GetDetailedFeedback(level)}";
         }
 
-        // ↓ ADD THIS NEW METHOD AFTER GenerateMLFeedback ↓
         private string GetDetailedFeedback(string level)
         {
             return level switch
