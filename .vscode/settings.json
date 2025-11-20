@@ -1,0 +1,5 @@
+{
+    "dotnet.defaultSolution": "RecruitmentAI.sln",
+    "debug.onTaskErrors": "abort",
+    "dotnet.enablePackageRestore": true
+}

@@ -1,0 +1,16 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch RecruitmentAI",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/RecruitmentAI.App/bin/Debug/net8.0-windows/RecruitmentAI.App.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/RecruitmentAI.App",
+            "stopAtEntry": false,
+            "console": "internalConsole"
+        }
+    ]
+}
